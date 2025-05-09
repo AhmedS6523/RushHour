@@ -343,6 +343,8 @@ void DrawString(float x, float y, const string& str, float * color = NULL);
 // seed the random numbers generator by current time (see the documentation of srand for further help)...
 void InitRandomizer();
 
+void SpawnNewPassenger(int value);
+
 //This function returns a random value within the specified range of [rmin, rmax] ...
 long GetRandInRange(const long &rmin, const long &rmax);
 
