@@ -361,9 +361,9 @@ class NPCCar {
         int cellSize;
         Map* gameMapPtr;
         ColorNames carColor;
-        int moveTimer;
         int moveDirection; // 0-3: Left, Right, Up, Down
         int maxWidth, maxHeight;  // Added to track grid boundaries
+        bool justMoved;  // Flag to track when this car has just moved
     
     public:
         NPCCar(Map* mapPtr, int cSize) {
@@ -371,8 +371,8 @@ class NPCCar {
             cellSize = cSize;
             gameMapPtr = mapPtr;
             carColor = RED;
-            moveTimer = 0;
             moveDirection = rand() % 4;
+            justMoved = false;
             // Set grid boundaries based on map size
             maxWidth = mapPtr->getWidth() * cSize;
             maxHeight = mapPtr->getHeight() * cSize;
@@ -390,8 +390,9 @@ class NPCCar {
                 int gridX = rand() % 30 + 1;
                 int gridY = rand() % 21 + 1;
                 
-                xPos = gridX * cellSize;
-                yPos = gridY * cellSize;
+               
+                xPos = gridX * cellSize + (cellSize - size) / 2;
+                yPos = gridY * cellSize + (cellSize - size) / 2;
                 
                 if (gameMapPtr->canMoveTo(xPos, yPos)) {
                     validPosition = true;
@@ -400,15 +401,17 @@ class NPCCar {
             }
             
             if (!validPosition) {
-                xPos = 3 * cellSize;
-                yPos = 3 * cellSize;
+                // Default position centered in cell (3,3)
+                xPos = 3 * cellSize + cellSize / 2 - size / 2;
+                yPos = 3 * cellSize + cellSize / 2 - size / 2;
                 
                 if (!gameMapPtr->canMoveTo(xPos, yPos)) {
                     for (int i = 1; i < 30; i++) {
                         for (int j = 1; j < 22; j++) {
                             if (gameMapPtr->canMoveTo(i * cellSize, j * cellSize)) {
-                                xPos = i * cellSize;
-                                yPos = j * cellSize;
+                                // Center in this found valid cell
+                                xPos = i * cellSize + cellSize / 2 - size / 2;
+                                yPos = j * cellSize + cellSize / 2 - size / 2;
                                 return;
                             }
                         }
@@ -418,75 +421,73 @@ class NPCCar {
         }
         
         void draw() {
+            // Center of the 40x40 cell
+            float centerX = (xPos / 40) * 40 + 20;
+            float centerY = (yPos / 40) * 40 + 12;
+        
+            // Car body
+            float bodyLength = size;
             float bodyHeight = size * 0.6;
-            float bodyLength = size * 1.4;
-            float bodyX = xPos - size * 0.2;
-            float bodyY = yPos;
-    
-            DrawRoundRect(bodyX, bodyY, bodyLength, bodyHeight, colors[carColor]);
-    
+            DrawRoundRect(centerX - bodyLength / 2, centerY - bodyHeight / 2, bodyLength, bodyHeight, colors[RED]);
+        
+            // Cabin
             float cabinWidth = size * 0.8;
             float cabinHeight = size * 0.5;
-            float cabinX = xPos + size * 0.1;
-            float cabinY = yPos + bodyHeight;
-    
-            DrawRectangle(cabinX, cabinY, cabinWidth, cabinHeight, colors[BLACK]);
-    
-            DrawCircle(bodyX + size * 0.3, bodyY - size * 0.2, size * 0.2, colors[DARK_GRAY]);
-            DrawCircle(bodyX + size * 1.0, bodyY - size * 0.2, size * 0.2, colors[DARK_GRAY]);
-        }
+            DrawRectangle(centerX - cabinWidth / 2, centerY + bodyHeight / 2, cabinWidth, cabinHeight, colors[BLACK]);
         
-        void update() {
-            // Update move timer
-            moveTimer++;
-            if (moveTimer >= 5) { // Move every 5 ticks
-                moveTimer = 0;
+            // Wheels
+            float wheelRadius = size * 0.2;
+            DrawCircle(centerX - size * 0.3, centerY - bodyHeight / 2 - wheelRadius, wheelRadius, colors[DARK_GRAY]);
+            DrawCircle(centerX + size * 0.3, centerY - bodyHeight / 2 - wheelRadius, wheelRadius, colors[DARK_GRAY]);
+        
+            justMoved = false;
+        }
+        void moveOnTick() {
+            // Sometimes change direction
+            if (rand() % 10 == 0) {
+                moveDirection = rand() % 4;
+            }
+            
+            // Try to move in current direction
+            bool moved = false;
+            int originalDirection = moveDirection;
+            
+            do {
+                int newX = xPos;
+                int newY = yPos;
                 
-                // Sometimes change direction
-                if (rand() % 10 == 0) {
-                    moveDirection = rand() % 4;
+                switch (moveDirection) {
+                    case 0: // Left
+                        newX = xPos - cellSize;
+                        break;
+                    case 1: // Right
+                        newX = xPos + cellSize;
+                        break;
+                    case 2: // Up
+                        newY = yPos + cellSize;
+                        break;
+                    case 3: // Down
+                        newY = yPos - cellSize;
+                        break;
                 }
                 
-                // Try to move in current direction
-                bool moved = false;
-                int originalDirection = moveDirection;
-                
-                do {
-                    int newX = xPos;
-                    int newY = yPos;
-                    
-                    switch (moveDirection) {
-                        case 0: // Left
-                            newX = xPos - cellSize;
-                            break;
-                        case 1: // Right
-                            newX = xPos + cellSize;
-                            break;
-                        case 2: // Up
-                            newY = yPos + cellSize;
-                            break;
-                        case 3: // Down
-                            newY = yPos - cellSize;
-                            break;
-                    }
-                    
-                    // Check if the new position is within grid bounds and not on a building
-                    if (newX >= cellSize && newX + size < maxWidth - cellSize && 
-                        newY >= cellSize && newY + size < maxHeight - 2 * cellSize && 
-                        gameMapPtr->canMoveTo(newX, newY)) {
-                        xPos = newX;
-                        yPos = newY;
-                        moved = true;
-                    } else {
-                        // Try another direction
-                        moveDirection = (moveDirection + 1) % 4;
-                    }
-                } while (!moved && moveDirection != originalDirection);
-            }
+                // Check if the new position is within grid bounds and not on a building
+                if (newX >= cellSize && newX + size < maxWidth - cellSize && 
+                    newY >= cellSize && newY + size < maxHeight - 2 * cellSize && 
+                    gameMapPtr->canMoveTo(newX, newY)) {
+                    xPos = newX;
+                    yPos = newY;
+                    moved = true;
+                    justMoved = true; // Set flag to indicate this car just moved
+                } else {
+                    // Try another direction
+                    moveDirection = (moveDirection + 1) % 4;
+                }
+            } while (!moved && moveDirection != originalDirection);
         }
         
         bool collidesWith(int carX, int carY, int carSize) {
-            // Simple rectangular collision
+            // Same as before
             int thisLeft = xPos - size * 0.2;
             int thisRight = xPos + size * 1.2;
             int thisBottom = yPos - size * 0.2;
@@ -504,7 +505,6 @@ class NPCCar {
         int getX() { return xPos; }
         int getY() { return yPos; }
     };
-
 // Passenger class
 class Passenger {
 private:
@@ -686,7 +686,8 @@ private:
     static const int NUM_NPC_CARS = 4;
     NPCCar* npcCars[NUM_NPC_CARS];
     bool gameOver;
-    int moveTimerCounter; // Added to track time-based movement
+    int moveTimerCounter; 
+    int gameTimer; // Game timer in seconds
     
 public:
     GameManager(int windowWidth, int windowHeight) {
@@ -699,13 +700,13 @@ public:
         statusMessage = "";
         gameOver = false;
         moveTimerCounter = 0; // Initialize the counter
+        gameTimer = 0;
+        moveTimerCounter = 0;
         
-        // FIXED: First initialize the map
         gameMap = new Map(32, 24, 40);
-        
-        // FIXED: Then initialize NPCs with the valid map pointer
+       
         for (int i = 0; i < NUM_NPC_CARS; i++) {
-            npcCars[i] = new NPCCar(gameMap, 40);
+            npcCars[i] = new NPCCar(gameMap, 38);
         }
         
         // Initialize car and passengers
@@ -745,22 +746,53 @@ public:
                 statusMessage = "";
             }
         }
+        if (!playerCar->getHasPassenger()) {
+            for (int i = 0; i < NUM_PASSENGERS; i++) {
+                if (!passengers[i]->getIsVisible()) {
+                    passengers[i]->spawn();
+                }
+            }
+        }
         
-        // Updated to make NPC cars move based on time
+        // Update timer for status message
+        if (refuelMessageTimer > 0) {
+            refuelMessageTimer--;
+            if (refuelMessageTimer == 0) {
+                statusMessage = "";
+            }
+        }
+        
+        // Update game timer and handle NPC movements
         if (!gameOver) {
-            // Always update all NPC cars every tick
+            // Increment the move timer counter
+            moveTimerCounter++;
+            
+            // Update game timer every 10 ticks (1 second)
+            if (moveTimerCounter % 10 == 0) {
+                gameTimer++;
+            }
+            
+            // Move NPCs when timer is divisible by 2
+            if (gameTimer > 0 && gameTimer % 2 == 0 && moveTimerCounter % 10 == 0) {
+                // Only move NPCs right when the timer changes to an even number
+                for (int i = 0; i < NUM_NPC_CARS; i++) {
+                    npcCars[i]->moveOnTick();
+                }
+            }
+            
+            // Always check for collisions
             for (int i = 0; i < NUM_NPC_CARS; i++) {
-                npcCars[i]->update();
-                
                 if (npcCars[i]->collidesWith(playerCar->getX(), playerCar->getY(), 20)) {
                     gameOver = true;
                     statusMessage = "GAME OVER! You crashed!";
-                    refuelMessageTimer = 300; // Show for longer
+                    refuelMessageTimer = 300;
                 }
             }
         }
     }
     
+        
+        
     void draw() {
         // Clear screen
         glClearColor(0, 0, 0.0, 0);
@@ -778,11 +810,6 @@ public:
             npcCars[i]->draw();
         }
         
-        // Draw game over message if needed
-        if (gameOver) {
-            DrawString(width/2 - 100, height/2, "GAME OVER!", colors[RED]);
-            DrawString(width/2 - 120, height/2 - 30, "Press ESC to exit", colors[BLACK]);
-        }
         
         // Draw UI elements
         drawUI();
@@ -797,6 +824,10 @@ public:
         DrawRectangle(1000, 910, fuelWidth, 20, colors[RED]);
         DrawString(1000, 930, "Fuel", colors[BLACK]);
         
+        // Draw timer beneath the fuel bar
+        string timerStr = "Timer: " + to_string(gameTimer) + "s";
+        DrawString(1000, 880, timerStr, colors[BLACK]);
+        
         // Draw score and money
         string scoreStr = "Score=" + to_string(score);
         DrawString(40, 920, scoreStr, colors[BLACK]);
@@ -808,7 +839,6 @@ public:
         if (statusMessage != "") {
             DrawString(width / 2 - 100, height - 50, statusMessage, colors[BLACK]);
         }
-       
     }
     
     void handleSpecialKey(int key) {
@@ -896,7 +926,8 @@ void Timer(int m) {
     if (gameManagerPtr) {
         gameManagerPtr->update();
     }
-    glutTimerFunc(100, Timer, 0);
+    glutPostRedisplay(); // Redraw after update
+    glutTimerFunc(100, Timer, 0); // Schedule next timer call
 }
 
 void MouseClicked(int button, int state, int x, int y) {
